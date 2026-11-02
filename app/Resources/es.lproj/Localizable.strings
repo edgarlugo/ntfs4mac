@@ -50,6 +50,55 @@
 "This takes a few minutes. macOS will ask for your password." = "Tarda unos minutos. macOS te pedirá la contraseña.";
 "macFUSE is installed. ntfs4mac doesn't need it; you can remove it with: brew uninstall --cask macfuse" = "macFUSE está instalado. ntfs4mac no lo necesita; puedes quitarlo con: brew uninstall --cask macfuse";
 
+/* File browser */
+"Search this folder" = "Buscar en esta carpeta";
+"Back" = "Atrás";
+"Forward" = "Adelante";
+"Enclosing folder" = "Carpeta contenedora";
+"Name" = "Nombre";
+"Date Modified" = "Fecha de modificación";
+"Size" = "Tamaño";
+"Kind" = "Tipo";
+"This folder is empty" = "Esta carpeta está vacía";
+"No results" = "Sin resultados";
+"New Folder" = "Nueva carpeta";
+"Paste" = "Pegar";
+"Show in Finder" = "Mostrar en el Finder";
+"Open" = "Abrir";
+"Copy" = "Copiar";
+"Copy to…" = "Copiar a…";
+"Rename…" = "Renombrar…";
+"Rename" = "Renombrar";
+"Delete…" = "Eliminar…";
+"Delete" = "Eliminar";
+"Add Files" = "Añadir archivos";
+"Copy files from your Mac into this folder" = "Copiar archivos de tu Mac a esta carpeta";
+"Copy to Mac" = "Copiar al Mac";
+"Copy the selection to a folder on your Mac" = "Copiar la selección a una carpeta de tu Mac";
+"Hidden Files" = "Archivos ocultos";
+"Show hidden and system files" = "Mostrar archivos ocultos y del sistema";
+"Preview" = "Vista previa";
+"Show preview and details" = "Mostrar vista previa y detalles";
+"Delete “%@”?" = "¿Eliminar «%@»?";
+"Delete %lld items?" = "¿Eliminar %lld elementos?";
+"Files on this drive can't be moved to the Trash. This can't be undone." = "Los archivos de este disco no se pueden mover a la Papelera. Esta acción no se puede deshacer.";
+"%lld items, %@ available" = "%lld elementos, %@ disponibles";
+"%lld of %lld selected, %@ available" = "%lld de %lld seleccionados, %@ disponibles";
+"Copy Here" = "Copiar aquí";
+"Choose files or folders to copy to %@" = "Elige archivos o carpetas para copiar a %@";
+"Choose where to copy %lld item(s) on your Mac" = "Elige dónde copiar %lld elemento(s) en tu Mac";
+"untitled folder" = "carpeta sin título";
+"Creating folder…" = "Creando carpeta…";
+"Renaming…" = "Renombrando…";
+"Deleting…" = "Eliminando…";
+"Copying %lld item(s)…" = "Copiando %lld elemento(s)…";
+"%lld items selected" = "%lld elementos seleccionados";
+"Select a file to preview it" = "Selecciona un archivo para previsualizarlo";
+"Created" = "Creado";
+"Modified" = "Modificado";
+"Where" = "Ubicación";
+"bytes" = "bytes";
+
 /* Menu bar */
 "Open ntfs4mac…" = "Abrir ntfs4mac…";
 "Quit" = "Salir";

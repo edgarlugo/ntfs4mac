@@ -17,7 +17,11 @@ struct ContentView: View {
                     Sidebar()
                         .navigationSplitViewColumnWidth(min: 200, ideal: 230)
                 } detail: {
-                    if let drive = store.selectedDrive {
+                    if let drive = store.selectedDrive, let root = drive.url {
+                        // Mounted: browse it. A new mount (read-only → read-write) gets a fresh browser.
+                        BrowserView(drive: drive, root: root)
+                            .id("\(drive.id)|\(drive.state.rawValue)|\(root.path)")
+                    } else if let drive = store.selectedDrive {
                         DriveDetail(drive: drive)
                     } else {
                         EmptyState()
