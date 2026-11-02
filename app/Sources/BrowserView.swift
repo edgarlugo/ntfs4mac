@@ -37,16 +37,22 @@ struct BrowserView: View {
             Divider()
             // Wide window: preview on the right, like Finder's gallery. Narrow: below the list.
             GeometryReader { geo in
-                let inspector = Inspector(item: selected.count == 1 ? selected.first : nil, count: selected.count)
+                let item = selected.count == 1 ? selected.first : nil
                 if geo.size.width >= 680 {
                     HSplitView {
                         fileTable.frame(minWidth: 300)
-                        if showInspector { inspector.frame(minWidth: 220, idealWidth: 270, maxWidth: 400) }
+                        if showInspector {
+                            Inspector(item: item, count: selected.count, compact: false)
+                                .frame(minWidth: 220, idealWidth: 270, maxWidth: 400)
+                        }
                     }
                 } else {
                     VSplitView {
-                        fileTable.frame(minHeight: 160)
-                        if showInspector { inspector.frame(minHeight: 180, idealHeight: 240) }
+                        fileTable.frame(minHeight: 120)
+                        if showInspector {
+                            Inspector(item: item, count: selected.count, compact: true)
+                                .frame(minHeight: 130, idealHeight: 170, maxHeight: 320)
+                        }
                     }
                 }
             }
@@ -325,18 +331,29 @@ struct DriveBar: View {
 struct Inspector: View {
     let item: FileItem?
     let count: Int
+    /// Below the list (narrow window): small thumbnail beside the details instead of a big preview on top.
+    let compact: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if let item {
-                QuickLookPreview(url: item.url)
-                    .frame(minHeight: 200, maxHeight: .infinity)
-                Divider()
-                details(item)
+                if compact {
+                    HStack(alignment: .top, spacing: 0) {
+                        thumbnail(item).frame(width: 130).frame(maxHeight: .infinity)
+                        Divider()
+                        ScrollView { details(item) }
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        thumbnail(item).frame(minHeight: 120, maxHeight: .infinity)
+                        Divider()
+                        ScrollView { details(item) }.fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: count > 1 ? "doc.on.doc" : "eye")
-                        .font(.system(size: 36, weight: .light))
+                        .font(.system(size: compact ? 26 : 36, weight: .light))
                         .foregroundStyle(.tertiary)
                     Text(count > 1 ? "\(count) items selected" : "Select a file to preview it")
                         .foregroundStyle(.secondary)
@@ -344,13 +361,27 @@ struct Inspector: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .controlBackgroundColor))
+        .clipped()
+    }
+
+    /// Quick Look for files; folders just get their icon (Quick Look blows it up to fill the pane).
+    @ViewBuilder private func thumbnail(_ item: FileItem) -> some View {
+        if item.isDirectory {
+            Image(nsImage: item.icon)
+                .resizable().aspectRatio(contentMode: .fit)
+                .frame(maxWidth: compact ? 72 : 96, maxHeight: compact ? 72 : 96)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            QuickLookPreview(url: item.url)
+        }
     }
 
     private func details(_ item: FileItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(item.name).font(.headline).lineLimit(3).textSelection(.enabled)
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            Text(item.name).font(.headline).lineLimit(compact ? 1 : 3).truncationMode(.middle).textSelection(.enabled)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: compact ? 4 : 6) {
                 row("Kind", item.kind)
                 if let size = item.size {
                     row("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
@@ -367,7 +398,7 @@ struct Inspector: View {
             }
             .controlSize(.small)
         }
-        .padding(14)
+        .padding(compact ? 10 : 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

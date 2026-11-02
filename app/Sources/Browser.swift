@@ -128,8 +128,10 @@ final class Browser: ObservableObject {
             let dir = v?.isDirectory ?? false
             let size: Int64? = dir ? nil : Int64(v?.fileSize ?? 0)
             let modified = v?.contentModificationDate
+            // NFS (FUSE-T) has no creation date and reports 1 Jan 1970; treat that as unknown.
+            let created = v?.creationDate.flatMap { $0.timeIntervalSince1970 > 86_400 ? $0 : nil }
             return FileItem(url: url, name: name, isDirectory: dir, size: size,
-                            modified: modified, created: v?.creationDate,
+                            modified: modified, created: created,
                             kind: v?.localizedTypeDescription ?? "",
                             sizeText: size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--",
                             dateText: modified.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "--")
