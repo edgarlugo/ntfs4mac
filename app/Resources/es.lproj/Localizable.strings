@@ -1,0 +1,55 @@
+/* Window */
+"Refresh" = "Actualizar";
+"NTFS Drives" = "Discos NTFS";
+"No NTFS drives" = "No hay discos NTFS";
+"Plug in an NTFS drive" = "Conecta un disco NTFS";
+"Drives formatted on Windows will appear here automatically." = "Los discos formateados en Windows aparecerán aquí automáticamente.";
+
+/* Drive states */
+"Read & write" = "Lectura y escritura";
+"Read-only" = "Solo lectura";
+"Not mounted" = "Sin montar";
+"macOS can only read this drive. Press **Enable writing** to copy, edit and delete files on it." = "macOS solo puede leer este disco. Pulsa **Activar escritura** para copiar, editar y borrar archivos en él.";
+"This drive is connected but not open. Press **Enable writing** to use it." = "Este disco está conectado pero no abierto. Pulsa **Activar escritura** para usarlo.";
+"You can use this drive like any other. Press **Eject safely** before unplugging it so every change is saved." = "Puedes usar este disco como cualquier otro. Pulsa **Expulsar con seguridad** antes de desconectarlo para que se guarden todos los cambios.";
+"%@ available of %@" = "%@ disponibles de %@";
+
+/* Actions */
+"Enable writing" = "Activar escritura";
+"Open in Finder" = "Abrir en el Finder";
+"Open read-only" = "Abrir en solo lectura";
+"Eject safely" = "Expulsar con seguridad";
+"Remove hidden macOS files (._*)" = "Borrar archivos ocultos de macOS (._*)";
+"macOS leaves small ._ files when it copies to this drive. They are harmless, but Windows shows them." = "macOS deja pequeños archivos ._ al copiar a este disco. No hacen daño, pero Windows los muestra.";
+
+/* Results */
+"%@ is mounted read-only." = "%@ está montado en solo lectura.";
+"%@ is ready: you can now copy, edit and delete files." = "%@ está listo: ya puedes copiar, editar y borrar archivos.";
+"%@ was ejected. You can unplug it safely." = "%@ se expulsó. Ya puedes desconectarlo con seguridad.";
+"Hidden macOS files removed from %@." = "Se borraron los archivos ocultos de macOS de %@.";
+"Windows left this drive \"hibernated\" (Fast Startup), so writing to it could damage your files. Shut Windows down completely or turn off Fast Startup, then try again. Meanwhile you can open it read-only." = "Windows dejó este disco \"hibernado\" (Inicio rápido), así que escribir en él podría dañar tus archivos. Apaga Windows por completo o desactiva el Inicio rápido y vuelve a intentarlo. Mientras tanto puedes abrirlo en solo lectura.";
+"The password was cancelled or incorrect." = "Se canceló la contraseña o era incorrecta.";
+"The drive is in use. Close any app or Finder window that is using it and try again." = "El disco está en uso. Cierra las apps o ventanas del Finder que lo estén usando y vuelve a intentarlo.";
+"Something went wrong." = "Algo salió mal.";
+
+/* Password dialog */
+"ntfs4mac needs your Mac password to change how the drive is mounted." = "ntfs4mac necesita la contraseña de tu Mac para cambiar cómo se monta el disco.";
+"OK" = "Aceptar";
+"Cancel" = "Cancelar";
+
+/* Setup */
+"Set up ntfs4mac" = "Configurar ntfs4mac";
+"One-time setup to let your Mac write to NTFS drives. No restart, no security changes." = "Configuración única para que tu Mac pueda escribir en discos NTFS. Sin reiniciar y sin cambiar la seguridad.";
+"Package manager used to install the pieces." = "Gestor de paquetes que instala las piezas.";
+"Get Homebrew" = "Obtener Homebrew";
+"Apple's free compiler tools." = "Herramientas de compilación gratuitas de Apple.";
+"Install" = "Instalar";
+"Lets drivers run without a kernel extension." = "Permite usar drivers sin extensión de kernel.";
+"The open-source NTFS driver, built for your Mac." = "El driver NTFS open source, compilado para tu Mac.";
+"Install Homebrew and the Command Line Tools first." = "Primero instala Homebrew y las Command Line Tools.";
+"This takes a few minutes. macOS will ask for your password." = "Tarda unos minutos. macOS te pedirá la contraseña.";
+"macFUSE is installed. ntfs4mac doesn't need it; you can remove it with: brew uninstall --cask macfuse" = "macFUSE está instalado. ntfs4mac no lo necesita; puedes quitarlo con: brew uninstall --cask macfuse";
+
+/* Menu bar */
+"Open ntfs4mac…" = "Abrir ntfs4mac…";
+"Quit" = "Salir";

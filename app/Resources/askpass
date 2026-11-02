@@ -1,0 +1,18 @@
+#!/bin/sh
+# Used by `sudo -A` when ntfs4mac runs from the app: asks for the password
+# with a native macOS dialog and prints it to sudo.
+exec /usr/bin/osascript - \
+  "${NTFS4MAC_PROMPT:-ntfs4mac needs your Mac password.}" \
+  "${NTFS4MAC_OK:-OK}" "${NTFS4MAC_CANCEL:-Cancel}" "${NTFS4MAC_ICON:-}" <<'EOF'
+on run argv
+  set {msg, okLabel, cancelLabel, iconPath} to argv
+  if iconPath is "" then
+    set r to display dialog msg default answer "" with hidden answer with title "ntfs4mac" ¬
+      buttons {cancelLabel, okLabel} default button okLabel cancel button cancelLabel with icon caution
+  else
+    set r to display dialog msg default answer "" with hidden answer with title "ntfs4mac" ¬
+      buttons {cancelLabel, okLabel} default button okLabel cancel button cancelLabel with icon (POSIX file iconPath)
+  end if
+  return text returned of r
+end run
+EOF
