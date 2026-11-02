@@ -1,0 +1,340 @@
+#!/usr/bin/env bash
+# ntfs4mac — free, open-source NTFS read/write for macOS (Apple Silicon & Intel)
+# without kernel extensions and without lowering system security.
+#
+# Stack: FUSE-T (kext-less FUSE over a local NFS server) + ntfs-3g (Tuxera, GPL).
+# https://github.com/edgarlugo/ntfs4mac
+
+set -euo pipefail
+
+VERSION="1.0.0"
+NTFS3G_VERSION="2022.10.3"
+NTFS3G_URL="https://github.com/tuxera/ntfs-3g/archive/refs/tags/${NTFS3G_VERSION}.tar.gz"
+NTFS3G_SHA256="8bd7749ea9d8534c9f0664d48b576e90b96d45ec8803c9427f6ffaa2f0dde299"
+
+PREFIX="${NTFS4MAC_PREFIX:-/usr/local/ntfs4mac}"
+BIN_LINK="/usr/local/bin/ntfs4mac"
+FUSET_DIR="/Library/Application Support/fuse-t"
+NTFS3G="$PREFIX/bin/ntfs-3g"
+
+# ---------------------------------------------------------------- helpers
+
+if [[ -t 1 ]]; then
+  B=$'\e[1m'; R=$'\e[31m'; G=$'\e[32m'; Y=$'\e[33m'; C=$'\e[36m'; N=$'\e[0m'
+else
+  B=; R=; G=; Y=; C=; N=
+fi
+
+info() { printf '%s==>%s %s\n' "$C$B" "$N" "$*"; }
+ok()   { printf '%s✔%s %s\n' "$G" "$N" "$*"; }
+warn() { printf '%s!%s %s\n' "$Y" "$N" "$*" >&2; }
+die()  { printf '%s✘%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
+
+need_macos() { [[ "$(uname -s)" == "Darwin" ]] || die "ntfs4mac only runs on macOS."; }
+installed()  { [[ -x "$NTFS3G" ]]; }
+# ntfs-3g has no --version; its usage banner names it and fails if a library is missing.
+ntfs3g_works() { local o; o=$("$NTFS3G" -h 2>&1 || true); [[ "$o" == *"Third Generation NTFS Driver"* ]]; }
+need_installed() { installed || die "ntfs-3g is not installed. Run: ntfs4mac install"; }
+
+# Every NTFS partition as "diskXsY<TAB>Volume Name".
+ntfs_volumes() {
+  local id info name
+  for id in $(diskutil list | grep -oE 'disk[0-9]+s[0-9]+$'); do
+    info=$(diskutil info "$id" 2>/dev/null) || continue
+    grep -qE 'File System Personality:[[:space:]]+NTFS' <<<"$info" || continue
+    name=$(sed -nE 's/^[[:space:]]*Volume Name:[[:space:]]+(.*)$/\1/p' <<<"$info")
+    printf '%s\t%s\n' "$id" "${name:-$id}"
+  done
+}
+
+# Accepts "disk7s2", "/dev/disk7s2" or a volume name; prints "id<TAB>name".
+resolve_volume() {
+  local want="${1#/dev/}" line
+  while IFS= read -r line; do
+    [[ "${line%%$'\t'*}" == "$want" || "${line#*$'\t'}" == "$1" ]] && { echo "$line"; return 0; }
+  done < <(ntfs_volumes)
+  return 1
+}
+
+# Mount point where ntfs4mac (FUSE-T) currently has this volume, if any.
+rw_mountpoint() {
+  mount | sed -nE "s|^fuse-t:/$(printf '%s' "$1" | sed 's/[][\.*^$|]/\\&/g') on (.*) \(nfs.*$|\1|p" | head -1
+}
+
+# Mount point where macOS' own read-only driver has this partition, if any.
+native_mountpoint() {
+  diskutil info "$1" 2>/dev/null | sed -nE 's/^[[:space:]]*Mount Point:[[:space:]]+(.+)$/\1/p'
+}
+
+# ---------------------------------------------------------------- install
+
+ensure_brew() {
+  command -v brew >/dev/null || die "Homebrew is required: https://brew.sh"
+  export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 HOMEBREW_NO_ENV_HINTS=1
+}
+
+ensure_fuse_t() {
+  if ls "$FUSET_DIR"/lib/libfuse-t-*.dylib >/dev/null 2>&1; then
+    ok "FUSE-T found"
+    return
+  fi
+  info "Installing FUSE-T (kext-less FUSE). macOS will ask for your password."
+  brew install --cask fuse-t
+}
+
+ensure_build_tools() {
+  xcode-select -p >/dev/null 2>&1 || die "Command Line Tools missing. Run: xcode-select --install"
+  local missing=() f
+  # Only install what is missing, so Homebrew does not upgrade half your system.
+  for f in autoconf automake libtool pkgconf; do
+    brew list --versions "$f" >/dev/null 2>&1 || missing+=("$f")
+  done
+  if ((${#missing[@]})); then
+    info "Installing build tools: ${missing[*]}"
+    brew install "${missing[@]}"
+  fi
+  ok "Build tools ready"
+}
+
+cmd_install() {
+  need_macos
+  ensure_brew
+  ensure_fuse_t
+  ensure_build_tools
+
+  local src fuse_lib cpu_flags jobs
+  work=$(mktemp -d -t ntfs4mac)
+  trap 'rm -rf "$work"' EXIT
+
+  info "Downloading ntfs-3g $NTFS3G_VERSION"
+  curl -fsSL -o "$work/ntfs-3g.tgz" "$NTFS3G_URL"
+  echo "$NTFS3G_SHA256  $work/ntfs-3g.tgz" | shasum -a 256 -c - >/dev/null \
+    || die "Checksum mismatch for ntfs-3g tarball — aborting."
+  ok "Checksum verified"
+  tar -xzf "$work/ntfs-3g.tgz" -C "$work"
+  src="$work/ntfs-3g-$NTFS3G_VERSION"
+
+  # FUSE-T lives under a path with a space, which autotools cannot quote.
+  # Point the build at it through space-free symlinks.
+  ln -s "$FUSET_DIR/include/fuse" "$work/fuse-include"
+  mkdir -p "$work/fuse-lib"
+  fuse_lib=$(ls "$FUSET_DIR"/lib/libfuse-t-*.dylib | tail -1)
+  ln -s "$fuse_lib" "$work/fuse-lib/libfuse-t.dylib"
+
+  case "$(uname -m)" in
+    arm64)  cpu_flags="-mcpu=apple-m1" ;;   # baseline for every Apple Silicon chip
+    *)      cpu_flags="" ;;
+  esac
+  jobs=$(sysctl -n hw.ncpu)
+
+  info "Configuring"
+  (
+    cd "$src"
+    autoreconf -fi >/dev/null 2>&1
+    ./configure \
+      --prefix="$PREFIX" --exec-prefix="$PREFIX" \
+      --disable-ntfsprogs --disable-static --disable-mount-helper \
+      --disable-ldconfig --disable-crypto \
+      --with-fuse=external \
+      FUSE_MODULE_CFLAGS="-I$work/fuse-include -D_FILE_OFFSET_BITS=64" \
+      FUSE_MODULE_LIBS="-L$work/fuse-lib -lfuse-t" \
+      CFLAGS="-O2 $cpu_flags -Wno-deprecated-declarations" \
+      LDFLAGS="-Wl,-rpath,/usr/local/lib -Wl,-rpath,$PREFIX/lib" \
+      >"$work/configure.log" 2>&1
+  ) || { tail -30 "$work/configure.log" >&2; die "configure failed"; }
+
+  info "Building with $jobs cores"
+  make -C "$src" -j"$jobs" >"$work/build.log" 2>&1 \
+    || { tail -30 "$work/build.log" >&2; die "build failed"; }
+  ok "Built"
+
+  info "Installing to $PREFIX (needs your password)"
+  sudo make -C "$src" install >"$work/install.log" 2>&1 \
+    || { tail -30 "$work/install.log" >&2; die "install failed"; }
+  # FUSE-T normally drops libfuse-t.dylib in /usr/local/lib; keep a fallback next to ntfs-3g.
+  [[ -e /usr/local/lib/libfuse-t.dylib ]] || sudo ln -sf "$fuse_lib" "$PREFIX/lib/libfuse-t.dylib"
+  sudo mkdir -p "$(dirname "$BIN_LINK")"
+  sudo install -m 755 "${BASH_SOURCE[0]}" "$BIN_LINK"
+
+  ntfs3g_works || die "ntfs-3g was installed but does not start. Run: ntfs4mac doctor"
+  ok "ntfs4mac is ready. Try: ntfs4mac list"
+}
+
+cmd_uninstall() {
+  info "Removing $PREFIX and $BIN_LINK"
+  sudo rm -rf "$PREFIX" "$BIN_LINK"
+  ok "Removed. FUSE-T is still installed; remove it with: brew uninstall --cask fuse-t"
+}
+
+# ---------------------------------------------------------------- volumes
+
+cmd_list() {
+  need_macos
+  local found=0 id name mp state color
+  printf '%s%-10s %-28s %-11s %s%s\n' "$B" "DEVICE" "NAME" "STATE" "MOUNT POINT" "$N"
+  while IFS=$'\t' read -r id name; do
+    found=1
+    if mp=$(rw_mountpoint "$name") && [[ -n "$mp" ]]; then
+      state="read-write"; color=$G
+    elif mp=$(native_mountpoint "$id") && [[ -n "$mp" ]]; then
+      state="read-only"; color=$Y
+    else
+      state="unmounted"; color=; mp="-"
+    fi
+    printf '%-10s %-28s %s%-11s%s %s\n' "$id" "$name" "$color" "$state" "$N" "$mp"
+  done < <(ntfs_volumes)
+  ((found)) || echo "No NTFS volumes found. Is the drive plugged in?"
+}
+
+mount_one() {
+  local id="$1" name="$2" ro="$3" mp opts out
+  mp=$(rw_mountpoint "$name")
+  if [[ -n "$mp" ]]; then ok "$name is already read-write at $mp"; return 0; fi
+
+  if [[ -n "$(native_mountpoint "$id")" ]]; then
+    info "Releasing $name from macOS' read-only driver"
+    diskutil unmount "$id" >/dev/null 2>&1 || sudo diskutil unmount "$id" >/dev/null \
+      || die "Could not unmount $name. Close any app or Finder window using it and retry."
+  fi
+
+  mp="/Volumes/$name"
+  sudo mkdir -p "$mp"
+  opts=(-o local -o allow_other -o "volname=$name" -o noatime -o windows_names)
+  [[ "$ro" == 1 ]] && opts+=(-o ro)
+
+  info "Mounting $name ($id) $([[ "$ro" == 1 ]] && echo read-only || echo read-write)"
+  if ! out=$(sudo "$NTFS3G" "/dev/$id" "$mp" "${opts[@]}" 2>&1); then
+    echo "$out" >&2
+    sudo rmdir "$mp" 2>/dev/null || true
+    if grep -qiE 'hibernat|unclean|fast restart' <<<"$out"; then
+      warn "Windows left this drive hibernated (Fast Startup). Writing now could lose data."
+      warn "Fix: in Windows run 'shutdown /s /t 0' (full shutdown), or disable Fast Startup."
+      warn "Meanwhile you can read it with: ntfs4mac mount --ro \"$name\""
+    fi
+    diskutil mount "$id" >/dev/null 2>&1 || true
+    die "Could not mount $name"
+  fi
+  ok "$name mounted at $mp"
+}
+
+cmd_mount() {
+  need_macos; need_installed
+  local ro=0 all=0 targets=() line
+  while (($#)); do
+    case "$1" in
+      --ro) ro=1 ;;
+      --all|-a) all=1 ;;
+      -*) die "Unknown option: $1" ;;
+      *) targets+=("$1") ;;
+    esac
+    shift
+  done
+
+  if ((all)) || ((${#targets[@]} == 0)); then
+    local vols; vols=$(ntfs_volumes)
+    [[ -n "$vols" ]] || die "No NTFS volumes found."
+    if ((!all)) && (($(wc -l <<<"$vols") > 1)); then
+      cmd_list; die "Several NTFS volumes found — name one, or use --all."
+    fi
+    while IFS=$'\t' read -r id name; do mount_one "$id" "$name" "$ro"; done <<<"$vols"
+    return
+  fi
+  for t in "${targets[@]}"; do
+    line=$(resolve_volume "$t") || die "No NTFS volume called '$t'. See: ntfs4mac list"
+    mount_one "${line%%$'\t'*}" "${line#*$'\t'}" "$ro"
+  done
+}
+
+cmd_unmount() {
+  need_macos
+  local all=0 targets=() line id name mp
+  while (($#)); do
+    case "$1" in
+      --all|-a) all=1 ;;
+      *) targets+=("$1") ;;
+    esac
+    shift
+  done
+  if ((all)) || ((${#targets[@]} == 0)); then
+    while IFS=$'\t' read -r id name; do
+      [[ -n "$(rw_mountpoint "$name")" ]] && targets+=("$id")
+    done < <(ntfs_volumes)
+    ((${#targets[@]})) || { ok "Nothing mounted by ntfs4mac."; return; }
+  fi
+  for t in "${targets[@]}"; do
+    line=$(resolve_volume "$t") || die "No NTFS volume called '$t'."
+    id="${line%%$'\t'*}"; name="${line#*$'\t'}"
+    mp=$(rw_mountpoint "$name")
+    [[ -n "$mp" ]] || { warn "$name is not mounted read-write."; continue; }
+    info "Flushing and unmounting $name"
+    sync
+    sudo umount "$mp" 2>/dev/null || sudo diskutil unmount force "$mp" >/dev/null \
+      || die "Could not unmount $name. Close any app using it and retry."
+    sudo rmdir "$mp" 2>/dev/null || true
+    ok "$name unmounted — safe to unplug"
+  done
+}
+
+# ---------------------------------------------------------------- extras
+
+cmd_clean() {
+  local target="${1:-}"
+  [[ -n "$target" && -d "$target" ]] || die "Usage: ntfs4mac clean <folder-or-volume>"
+  local n
+  n=$(find "$target" -name '._*' -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [[ "$n" == 0 ]]; then ok "No ._ files in $target"; return; fi
+  info "Removing $n macOS ._ metadata files from $target"
+  find "$target" -name '._*' -type f -delete
+  find "$target" -name '.DS_Store' -type f -delete
+  ok "Clean"
+}
+
+cmd_doctor() {
+  need_macos
+  echo "${B}ntfs4mac $VERSION${N}  macOS $(sw_vers -productVersion) $(uname -m)"
+  command -v brew >/dev/null && ok "Homebrew" || warn "Homebrew missing"
+  if ls "$FUSET_DIR"/lib/libfuse-t-*.dylib >/dev/null 2>&1; then ok "FUSE-T $(ls "$FUSET_DIR"/lib/libfuse-t-*.dylib | sed -E 's/.*libfuse-t-(.*)\.dylib/\1/' | tail -1)"
+  else warn "FUSE-T missing (ntfs4mac install)"; fi
+  if installed; then
+    if ntfs3g_works; then ok "ntfs-3g $NTFS3G_VERSION at $NTFS3G"
+    else warn "ntfs-3g at $NTFS3G does not start — reinstall with: ntfs4mac install"; fi
+  else warn "ntfs-3g not installed (ntfs4mac install)"; fi
+  if [[ -f /System/Library/Extensions/macfuse.kext/Contents/Info.plist || -d /Library/Filesystems/macfuse.fs ]]; then
+    warn "macFUSE is also installed. It is not needed and can conflict: brew uninstall --cask macfuse"
+  fi
+}
+
+usage() {
+  cat <<EOF
+${B}ntfs4mac $VERSION${N} — NTFS read/write for macOS, no kext, no reduced security.
+
+${B}Usage:${N}
+  ntfs4mac install              Install FUSE-T and build ntfs-3g (one time)
+  ntfs4mac list                 Show NTFS drives and how they are mounted
+  ntfs4mac mount [NAME|DISK]    Remount a drive read-write (no name = the only one)
+  ntfs4mac mount --all          Remount every NTFS drive read-write
+  ntfs4mac mount --ro NAME      Mount read-only (e.g. hibernated Windows drive)
+  ntfs4mac unmount [NAME|DISK]  Flush and unmount safely before unplugging
+  ntfs4mac clean PATH           Delete macOS ._ / .DS_Store files from a folder
+  ntfs4mac doctor               Check the installation
+  ntfs4mac uninstall            Remove ntfs-3g and this command
+
+${B}Examples:${N}
+  ntfs4mac mount "My Drive"
+  ntfs4mac mount disk4s2
+  ntfs4mac unmount --all
+EOF
+}
+
+case "${1:-}" in
+  install)          shift; cmd_install "$@" ;;
+  uninstall)        shift; cmd_uninstall "$@" ;;
+  list|ls)          shift; cmd_list "$@" ;;
+  mount)            shift; cmd_mount "$@" ;;
+  unmount|umount|eject) shift; cmd_unmount "$@" ;;
+  clean)            shift; cmd_clean "$@" ;;
+  doctor|status)    shift; cmd_doctor "$@" ;;
+  -v|--version)     echo "ntfs4mac $VERSION" ;;
+  ""|-h|--help|help) usage ;;
+  *)                usage; exit 1 ;;
+esac
