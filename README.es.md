@@ -21,7 +21,39 @@ entera en espacio de usuario y le sirve el disco a macOS mediante un servidor NF
 
 Probado en macOS 26 (Tahoe) con Apple Silicon (M1 Pro). En Macs Intel también debería funcionar.
 
-## Instalación
+Viene como **app para Mac**, para el día a día, y como **herramienta de terminal**.
+
+## La app
+
+Una ventana tipo Finder para usar tus discos NTFS sin abrir la terminal:
+
+- **Configuración con un clic**: revisa qué falta y lo instala, mostrando el progreso.
+- **Activar escritura / Expulsar con seguridad** para cada disco, más un icono en la barra de menús.
+- **Explorador de archivos**: barra de ruta, columnas ordenables, búsqueda, atrás/adelante y archivos ocultos.
+- **Vista previa (Quick Look) y detalles** (tipo, tamaño, fechas, ubicación) del archivo seleccionado.
+- **Operaciones**: nueva carpeta, renombrar, eliminar, copiar desde y hacia el Mac, arrastrar y soltar desde el Finder.
+- Avisos claros si Windows dejó el disco hibernado, y limpieza de archivos `._*`.
+- En español e inglés.
+
+### Cómo conseguirla
+
+**Descarga** `ntfs4mac-app.zip` desde [Releases](https://github.com/edgarlugo/ntfs4mac/releases),
+descomprímelo y mueve `ntfs4mac.app` a Aplicaciones. La app no está notarizada por Apple, así
+que la primera vez macOS no la abrirá: ve a **Ajustes del Sistema → Privacidad y seguridad** y
+pulsa **Abrir igualmente**.
+
+**O compílala tú** (solo hacen falta las Command Line Tools, no Xcode):
+
+```bash
+git clone https://github.com/edgarlugo/ntfs4mac.git
+cd ntfs4mac
+./build-app.sh --install         # la compila y la copia a /Applications
+```
+
+Abre la app y pulsa **Instalar** en la pantalla de configuración. Hace exactamente lo mismo
+que `./ntfs4mac install` (abajo) y te pide la contraseña del Mac cuando la necesita.
+
+## Instalación (terminal)
 
 Necesitas [Homebrew](https://brew.sh) y las Command Line Tools (`xcode-select --install`).
 
@@ -90,7 +122,7 @@ brew uninstall --cask fuse-t     # opcional
 
 ## Licencias
 
-- `ntfs4mac` (este script): [MIT](LICENSE).
+- `ntfs4mac` (el script y la app): [MIT](LICENSE).
 - **ntfs-3g**: GPL-2.0 o posterior / LGPL. Se descarga del repositorio oficial de Tuxera y se compila en tu Mac; no se redistribuye aquí.
 - **FUSE-T**: lo instala Homebrew, no se redistribuye aquí. Su binario es **gratis para uso no comercial**; para uso comercial hace falta una licencia de sus autores. La libfuse que incluye es LGPL.
 

@@ -21,7 +21,39 @@ space by serving the filesystem to macOS through a local NFS server.
 
 Tested on macOS 26 (Tahoe) on Apple Silicon (M1 Pro). Intel Macs should work too.
 
-## Install
+It comes as a **Mac app** for everyday use and a **command-line tool** for the terminal.
+
+## The app
+
+A Finder-like window to use your NTFS drives without the terminal:
+
+- **One-click setup**: checks what's missing and installs it, with a live log.
+- **Enable writing / Eject safely** for each drive, plus a menu bar icon for quick access.
+- **File browser**: path bar, sortable columns, search, back/forward, hidden files toggle.
+- **Quick Look preview and details** (kind, size, dates, location) for the selected file.
+- **File operations**: new folder, rename, delete, copy in and out, drag and drop from Finder.
+- Clear warnings for drives Windows left hibernated, and removal of `._*` files.
+- English and Spanish.
+
+### Get it
+
+**Download** `ntfs4mac-app.zip` from [Releases](https://github.com/edgarlugo/ntfs4mac/releases),
+unzip it and move `ntfs4mac.app` to Applications. The app is not notarized by Apple, so the
+first time macOS will refuse to open it: go to **System Settings → Privacy & Security** and
+click **Open Anyway**.
+
+**Or build it yourself** (only the Command Line Tools needed, no Xcode):
+
+```bash
+git clone https://github.com/edgarlugo/ntfs4mac.git
+cd ntfs4mac
+./build-app.sh --install         # builds and copies it to /Applications
+```
+
+Open the app and press **Install** on the setup screen. It does exactly what
+`./ntfs4mac install` does (below), and asks for your Mac password when it needs it.
+
+## Install (command line)
 
 You need [Homebrew](https://brew.sh) and the Command Line Tools (`xcode-select --install`).
 
@@ -90,7 +122,7 @@ brew uninstall --cask fuse-t     # optional
 
 ## Licenses
 
-- `ntfs4mac` (this script): [MIT](LICENSE).
+- `ntfs4mac` (the script and the app): [MIT](LICENSE).
 - **ntfs-3g**: GPL-2.0-or-later / LGPL. Downloaded from Tuxera's official repository and built on your Mac; not redistributed here.
 - **FUSE-T**: installed from Homebrew, not redistributed here. Its binary is **free for non-commercial use**; commercial use needs a license from its authors. Its bundled libfuse is LGPL.
 
