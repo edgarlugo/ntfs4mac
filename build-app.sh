@@ -42,7 +42,9 @@ rm -rf "$ICONSET" build/icon-1024.png
 echo "==> Signing (ad-hoc)"
 codesign --force --sign - "$APP"
 
-ditto -c -k --keepParent "$APP" build/ntfs4mac-app.zip
+# No extended attributes: other unzip tools would turn them into ._ files and break the signature.
+rm -f build/ntfs4mac-app.zip
+ditto -c -k --norsrc --noextattr --noqtn --noacl --keepParent "$APP" build/ntfs4mac-app.zip
 echo "✔ Built $APP"
 
 if [[ "${1:-}" == "--install" ]]; then
