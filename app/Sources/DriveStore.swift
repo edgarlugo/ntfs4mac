@@ -8,14 +8,20 @@ struct Drive: Identifiable, Hashable {
     let name: String
     let state: State
     let mountPoint: String? // nil when unmounted
+    /// Free/total bytes, read once per refresh off the main thread (it is a round trip to the drive).
+    var available: Int64? = nil
+    var total: Int64? = nil
 
     var url: URL? { mountPoint.map { URL(fileURLWithPath: $0) } }
 
-    /// (available, total) bytes, when mounted.
     var capacity: (available: Int64, total: Int64)? {
-        guard let url,
-              let v = try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]),
-              let free = v.volumeAvailableCapacity, let total = v.volumeTotalCapacity, total > 0
+        guard let available, let total, total > 0 else { return nil }
+        return (available, total)
+    }
+
+    nonisolated static func readCapacity(_ path: String) -> (Int64, Int64)? {
+        guard let v = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeAvailableCapacityKey, .volumeTotalCapacityKey]),
+              let free = v.volumeAvailableCapacity, let total = v.volumeTotalCapacity
         else { return nil }
         return (Int64(free), Int64(total))
     }
@@ -49,21 +55,46 @@ final class DriveStore: ObservableObject {
             })
         }
         // Plugging a drive in does not always post a mount notification; poll gently as a fallback.
-        timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
-        Task { await refresh() }
+        Task { await refresh(checkSetup: true) }
     }
 
     var selectedDrive: Drive? { drives.first { $0.id == selection } ?? drives.first }
 
     private var refreshing = false
 
-    func refresh() async {
+    func refresh(checkSetup: Bool = false) async {
         // Mount notifications, the timer and user actions can all fire at once; one refresh is enough.
         guard !refreshing else { return }
         refreshing = true
         defer { refreshing = false }
+        // The installation rarely changes: check it at launch, after installing, or while unfinished.
+        if checkSetup || setup?.ready != true { await refreshSetup() }
+        await refreshDrives()
+    }
+
+    private func refreshDrives() async {
+        let list = await CLI.run(["list", "--porcelain"])
+        let parsed: [Drive] = await Task.detached {
+            list.output.split(separator: "\n").compactMap { line in
+                let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                guard f.count == 4, let state = Drive.State(rawValue: f[2]) else { return nil }
+                var d = Drive(id: f[0], name: f[1], state: state, mountPoint: f[3] == "-" ? nil : f[3])
+                if let mp = d.mountPoint, let (free, total) = Drive.readCapacity(mp) {
+                    d.available = free; d.total = total
+                }
+                return d
+            }
+        }.value
+        if parsed != drives { drives = parsed }
+        if selection == nil || !drives.contains(where: { $0.id == selection }) {
+            selection = drives.first?.id
+        }
+    }
+
+    private func refreshSetup() async {
         let doctor = await CLI.run(["doctor", "--porcelain"])
         var s = Setup()
         for line in doctor.output.split(separator: "\n") {
@@ -80,17 +111,6 @@ final class DriveStore: ObservableObject {
             }
         }
         if setup != s { setup = s }
-
-        let list = await CLI.run(["list", "--porcelain"])
-        let parsed: [Drive] = list.output.split(separator: "\n").compactMap { line in
-            let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard f.count == 4, let state = Drive.State(rawValue: f[2]) else { return nil }
-            return Drive(id: f[0], name: f[1], state: state, mountPoint: f[3] == "-" ? nil : f[3])
-        }
-        if parsed != drives { drives = parsed }
-        if selection == nil || !drives.contains(where: { $0.id == selection }) {
-            selection = drives.first?.id
-        }
     }
 
     // MARK: - Actions
@@ -124,6 +144,11 @@ final class DriveStore: ObservableObject {
             busy.remove(drive.id)
             if result.ok {
                 notice = success
+                // Success messages fade away on their own; errors stay until closed.
+                Task {
+                    try? await Task.sleep(nanoseconds: 6_000_000_000)
+                    if notice == success { withAnimation { notice = nil } }
+                }
             } else {
                 error = Self.friendlyError(result.output)
             }
@@ -160,7 +185,7 @@ final class DriveStore: ObservableObject {
             }
             installing = false
             if !result.ok { error = Self.friendlyError(result.output) }
-            await refresh()
+            await refresh(checkSetup: true)
         }
     }
 

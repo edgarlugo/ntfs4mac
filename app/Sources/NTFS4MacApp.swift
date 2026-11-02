@@ -8,8 +8,9 @@ struct NTFS4MacApp: App {
         Window("ntfs4mac", id: "main") {
             ContentView()
                 .environmentObject(store)
-                .frame(minWidth: 720, minHeight: 460)
+                .frame(minWidth: 560, idealWidth: 1000, minHeight: 400, idealHeight: 640)
         }
+        .defaultSize(width: 1000, height: 640)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }

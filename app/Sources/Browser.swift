@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FileItem: Identifiable, Hashable {
     let url: URL
@@ -9,15 +10,31 @@ struct FileItem: Identifiable, Hashable {
     let modified: Date?
     let created: Date?
     let kind: String
+    // Pre-formatted once when the folder is read, so scrolling never re-formats.
+    let sizeText: String
+    let dateText: String
 
     var id: URL { url }
     var sortSize: Int64 { size ?? -1 }
     var sortDate: Date { modified ?? .distantPast }
-    var sizeText: String { size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--" }
+
+    /// Generic icon by type, cached. Asking the drive for each file's own icon is a
+    /// network round trip per row with FUSE-T, which makes big folders stutter.
+    @MainActor var icon: NSImage {
+        let key = isDirectory ? (url.pathExtension.lowercased() == "app" ? "app" : "/") : url.pathExtension.lowercased()
+        if let cached = IconCache.icons[key] { return cached }
+        let type: UTType = isDirectory ? (key == "app" ? .applicationBundle : .folder)
+                                       : (UTType(filenameExtension: key) ?? .data)
+        let image = NSWorkspace.shared.icon(for: type)
+        IconCache.icons[key] = image
+        return image
+    }
 
     static func == (a: FileItem, b: FileItem) -> Bool { a.url == b.url && a.modified == b.modified && a.size == b.size }
     func hash(into h: inout Hasher) { h.combine(url) }
 }
+
+@MainActor private enum IconCache { static var icons: [String: NSImage] = [:] }
 
 /// Folder navigation and file operations for one mounted drive.
 @MainActor
@@ -26,11 +43,13 @@ final class Browser: ObservableObject {
     let writable: Bool
 
     @Published private(set) var current: URL
-    @Published private(set) var items: [FileItem] = []
+    @Published private(set) var items: [FileItem] = [] { didSet { updateVisible() } }
+    /// Filtered + sorted rows. Stored, not computed: the table reads it on every redraw.
+    @Published private(set) var visibleItems: [FileItem] = []
     @Published private(set) var loading = false
     @Published var selection: Set<FileItem.ID> = []
-    @Published var sortOrder = [KeyPathComparator(\FileItem.name, comparator: .localizedStandard)]
-    @Published var search = ""
+    @Published var sortOrder = [KeyPathComparator(\FileItem.name, comparator: .localizedStandard)] { didSet { updateVisible() } }
+    @Published var search = "" { didSet { if search != oldValue { updateVisible() } } }
     @Published var showHidden = false { didSet { reload() } }
     @Published var busyMessage: String?
     @Published var error: String?
@@ -48,12 +67,14 @@ final class Browser: ObservableObject {
         reload()
     }
 
-    var visibleItems: [FileItem] {
+    private func updateVisible() {
         let filtered = search.isEmpty ? items : items.filter { $0.name.localizedCaseInsensitiveContains(search) }
-        return filtered.sorted(using: sortOrder)
+        visibleItems = filtered.sorted(using: sortOrder)
     }
 
-    var selectedItems: [FileItem] { items.filter { selection.contains($0.id) } }
+    var selectedItems: [FileItem] {
+        selection.isEmpty ? [] : items.filter { selection.contains($0.id) }
+    }
     var canGoBack: Bool { !backStack.isEmpty }
     var canGoForward: Bool { !forwardStack.isEmpty }
     var canGoUp: Bool { current.standardizedFileURL != root.standardizedFileURL }
@@ -83,8 +104,9 @@ final class Browser: ObservableObject {
                 self.loading = false
                 switch result {
                 case .success(let list):
-                    self.items = list
-                    self.selection = self.selection.filter { id in list.contains { $0.id == id } }
+                    if list != self.items { self.items = list }
+                    let ids = Set(list.map(\.id))
+                    if !self.selection.isSubset(of: ids) { self.selection.formIntersection(ids) }
                 case .failure(let e):
                     self.items = []
                     self.error = e.localizedDescription
@@ -104,10 +126,13 @@ final class Browser: ObservableObject {
             if !showHidden && (systemNames.contains(name) || name.hasPrefix("._")) { return nil }
             let v = try? url.resourceValues(forKeys: Set(keys))
             let dir = v?.isDirectory ?? false
-            return FileItem(url: url, name: name, isDirectory: dir,
-                            size: dir ? nil : Int64(v?.fileSize ?? 0),
-                            modified: v?.contentModificationDate, created: v?.creationDate,
-                            kind: v?.localizedTypeDescription ?? "")
+            let size: Int64? = dir ? nil : Int64(v?.fileSize ?? 0)
+            let modified = v?.contentModificationDate
+            return FileItem(url: url, name: name, isDirectory: dir, size: size,
+                            modified: modified, created: v?.creationDate,
+                            kind: v?.localizedTypeDescription ?? "",
+                            sizeText: size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "--",
+                            dateText: modified.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "--")
         }
     }
 
@@ -117,6 +142,7 @@ final class Browser: ObservableObject {
         current = url
         selection = []
         search = ""
+        items = []   // show the spinner instead of the previous folder while the new one loads
         reload()
     }
 

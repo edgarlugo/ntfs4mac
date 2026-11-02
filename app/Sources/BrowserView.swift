@@ -25,15 +25,29 @@ struct BrowserView: View {
     var body: some View {
         VStack(spacing: 0) {
             DriveBar(drive: drive)
+            if let message = store.error ?? store.notice {
+                Banner(text: message, style: store.error != nil ? .error : .success) {
+                    store.error = nil; store.notice = nil
+                }
+                .padding(.horizontal, 10).padding(.bottom, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
             Divider()
             navigationBar
             Divider()
-            HSplitView {
-                fileTable
-                    .frame(minWidth: 380)
-                if showInspector {
-                    Inspector(item: selected.count == 1 ? selected.first : nil, count: selected.count)
-                        .frame(minWidth: 240, idealWidth: 280, maxWidth: 420)
+            // Wide window: preview on the right, like Finder's gallery. Narrow: below the list.
+            GeometryReader { geo in
+                let inspector = Inspector(item: selected.count == 1 ? selected.first : nil, count: selected.count)
+                if geo.size.width >= 680 {
+                    HSplitView {
+                        fileTable.frame(minWidth: 300)
+                        if showInspector { inspector.frame(minWidth: 220, idealWidth: 270, maxWidth: 400) }
+                    }
+                } else {
+                    VSplitView {
+                        fileTable.frame(minHeight: 160)
+                        if showInspector { inspector.frame(minHeight: 180, idealHeight: 240) }
+                    }
                 }
             }
             statusBar
@@ -95,15 +109,14 @@ struct BrowserView: View {
         Table(of: FileItem.self, selection: $browser.selection, sortOrder: $browser.sortOrder) {
             TableColumn("Name", value: \.name, comparator: .localizedStandard) { item in
                 HStack(spacing: 6) {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+                    Image(nsImage: item.icon)
                         .resizable().frame(width: 18, height: 18)
                     Text(item.name).lineLimit(1)
                 }
             }
             .width(min: 180, ideal: 280)
             TableColumn("Date Modified", value: \.sortDate) { item in
-                Text(item.modified.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "--")
-                    .foregroundStyle(.secondary)
+                Text(item.dateText).foregroundStyle(.secondary)
             }
             .width(min: 120, ideal: 150)
             TableColumn("Size", value: \.sortSize) { item in
@@ -267,12 +280,19 @@ struct DriveBar: View {
                     StateBadge(state: drive.state)
                 }
                 if let cap = drive.capacity {
-                    HStack(spacing: 8) {
-                        ProgressView(value: Double(cap.total - cap.available), total: Double(cap.total))
-                            .frame(width: 140)
-                        Text("\(ByteCountFormatter.string(fromByteCount: cap.available, countStyle: .file)) available of \(ByteCountFormatter.string(fromByteCount: cap.total, countStyle: .file))")
-                            .font(.caption).foregroundStyle(.secondary)
+                    let free = ByteCountFormatter.string(fromByteCount: cap.available, countStyle: .file)
+                    let total = ByteCountFormatter.string(fromByteCount: cap.total, countStyle: .file)
+                    // Drop the bar, then the total, as the window narrows.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            ProgressView(value: Double(cap.total - cap.available), total: Double(cap.total))
+                                .frame(width: 140)
+                            Text("\(free) available of \(total)")
+                        }
+                        Text("\(free) available of \(total)")
+                        Text("\(free) available")
                     }
+                    .font(.caption).foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -297,15 +317,6 @@ struct DriveBar: View {
         }
         .disabled(store.busy.contains(drive.id))
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .overlay(alignment: .bottom) {
-            if let message = store.error ?? store.notice {
-                Banner(text: message, style: store.error != nil ? .error : .success)
-                    .padding(8)
-                    .offset(y: 56)
-                    .onTapGesture { store.error = nil; store.notice = nil }
-            }
-        }
-        .zIndex(1)
     }
 }
 

@@ -15,7 +15,7 @@ struct ContentView: View {
             } else {
                 NavigationSplitView {
                     Sidebar()
-                        .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+                        .navigationSplitViewColumnWidth(min: 170, ideal: 220, max: 300)
                 } detail: {
                     if let drive = store.selectedDrive, let root = drive.url {
                         // Mounted: browse it. A new mount (read-only → read-write) gets a fresh browser.
@@ -31,7 +31,7 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem {
-                Button { Task { await store.refresh() } } label: {
+                Button { Task { await store.refresh(checkSetup: true) } } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .help("Refresh")
@@ -253,9 +253,8 @@ struct ActionLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if busy { ProgressView().controlSize(.small) } else { Image(systemName: systemImage) }
-            Text(title)
+            Text(title).lineLimit(1)
         }
-        .frame(minWidth: 150)
     }
 }
 
@@ -263,12 +262,17 @@ struct Banner: View {
     enum Style { case error, success }
     let text: String
     let style: Style
+    var onClose: (() -> Void)? = nil
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: style == .error ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(style == .error ? .orange : .green)
             Text(text).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            if let onClose {
+                Button(action: onClose) { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+            }
         }
         .padding(12)
         .background((style == .error ? Color.orange : Color.green).opacity(0.1), in: RoundedRectangle(cornerRadius: 10))

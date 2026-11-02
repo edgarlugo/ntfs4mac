@@ -13,6 +13,7 @@
 "This drive is connected but not open. Press **Enable writing** to use it." = "Este disco está conectado pero no abierto. Pulsa **Activar escritura** para usarlo.";
 "You can use this drive like any other. Press **Eject safely** before unplugging it so every change is saved." = "Puedes usar este disco como cualquier otro. Pulsa **Expulsar con seguridad** antes de desconectarlo para que se guarden todos los cambios.";
 "%@ available of %@" = "%@ disponibles de %@";
+"%@ available" = "%@ disponibles";
 
 /* Actions */
 "Enable writing" = "Activar escritura";
